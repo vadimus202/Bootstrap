@@ -1,0 +1,159 @@
+---
+title: "Managing Model Uncertainty<BR>
+          Part 2: Bootstrap"
+author: "Vadim Bondarenko<BR>FI Consulting"
+date: "July 15, 2015"
+output: html_document
+---
+
+<style>
+caption{color:black;font-size=16px;font-weight: bold;}
+</style>
+
+
+```{r setup, include=FALSE}
+
+library(knitr)
+library(pander)
+library(ggplot2)
+library(ggthemes)
+library(scales)
+library(png)
+library(grid)
+library(dplyr)
+
+opts_chunk$set(echo = TRUE, results='asis', fig.align = 'center')
+theme_set(theme_classic())
+panderOptions('table.split.table', Inf)
+
+```
+
+
+```{r logo, echo=FALSE, fig.width=600/72*1.2, fig.height=147/72*1.2}
+# logo
+img <- readPNG('img/webinar_logo.png')
+grid.raster(img)
+```
+
+
+# What is Bootstrap?
+
+
+## Basic Example: Confidence Intervals of a Sample Median  
+
+### The Data
+Suppose we have a sample __x__ of size __n=9__, which is simply numbers 1 through 9. We assume that __x__ is a representative sample of independent observation from a larger unknown population __X__.
+
+```{r}
+# hypothetical sample x = {1,2, ... ,8,9}
+x = seq(1:9)
+
+# print x
+matrix(x, nrow = 1, dimnames = list("X", paste('Obs', 1:9))) %>% 
+  pandoc.table("Sample Observations X")
+
+# print summary of x
+summary(x) %>% t() %>%  pandoc.table("Summary of X")
+```
+
+
+The observe __median = `r median(x)`__ (the middle __Obs 5__), but if __x__ is a representative sample from a population and __`r median(x)`__ is the estimate of median for that population, what is the __90% confidence interval__ around that estimate?
+
+There is no analytical way to derive the distribution of the median. However, we can use bootstrap to derive it empirically from the data.
+
+### Basic Bootrap  
+To illustrate the basic setup, we begin by randomly drawing **R=10** samples __with replacement__ from out  sample __X__. Each random draw is of the same length (n=9) as our original sample.
+
+```{r}
+
+# set up a empty matrix to populate Bootstrap draws
+B = matrix(nrow = 10, ncol = 9,
+           dimnames = list(paste('Bootstrap Sample',1:10), 
+                           LETTERS[1:9]))
+# loop 10 times
+set.seed(111)
+for(i in 1:10){
+  # draw random samples from X
+  B[i,] = sample(x, size = length(x), replace = TRUE) %>% sort()
+}
+
+
+```
+
+As a result, we have a __R x n__ matrix of bootrapped observations.  
+```{r echo=FALSE}
+
+matrix(x, nrow = 1,ncol = 9,
+       dimnames = list("Original Sample X", 
+                       paste("Obs", 1:9))) %>% 
+  rbind(B) %>% 
+  pandoc.table(emphasize.strong.cols=5,
+               emphasize.strong.rows=1, caption='Bootstrap Results')
+
+```
+
+
+Since we drew 10 random samples of the same size as our original sample (9), any given observation **X<sub>i</sub>** will appear more than once in some samples and none at all in others. For example, the number 4 appears four times in Sample 1, but is missing completely from bootstrap Sample 2.
+
+The middle column with __Observation 5__ contains the medians of each bootstrapped sample. It provides us with the empirical distribution of the median, from which we can infer the mean, quantiles, and extreme values of the population median: 
+```{r, echo=FALSE}
+
+apply(B,1,median) %>% summary() %>% t() %>%  pandoc.table()
+
+```
+
+We can also visualize the distribution of the bootstrapped median:
+```{r, echo=FALSE, fig.width=4,fig.height=2.5}
+ggplot(data.frame(median=apply(B,1,median)),aes(factor(median)))+
+  geom_histogram(binwidth=1, color='grey', fill='powderblue')+
+  labs(title="Distribution of Median from 10 Bootrap Samples",
+       x='Median')+
+  theme(plot.title = element_text(size = 11, face='bold'))
+  
+```
+
+
+Of course, __R=10__ random samples are not enought to generate any meaningfill distributions. We can repeat the same bootstrap excercise with __R=1000__ random samples, which gives us a matrix B sized 1000 by 9.
+```{r}
+
+R = 1000  # number of bootstrap samples
+n = 9     # sample size
+
+# set up a empty Rxn matrix B
+B = matrix(nrow = R, ncol = n,
+           dimnames = list(1:R, LETTERS[1:n]))
+# loop R times
+set.seed(111)
+for(i in 1:R){
+  # draw random samples from X
+  B[i,] = sample(x, size = n, replace = TRUE)
+}
+
+```
+
+Taking the row medians of bootstrp matrix __B__ gives us the empirical distribution of the median.
+
+__Empirical Quantiles of Bootstrpped Median__
+```{r, echo=FALSE, fig.width=4,fig.height=2.5}
+# calculate row medians of B
+boot_med = apply(B,1,median)
+
+boot_med %>% 
+  quantile(c(0, 0.01, 0.05, 0.10, 0.50, 0.90, 0.95, 0.99, 1)) %>% 
+  t() %>%  pandoc.table()
+
+ggplot(data.frame(median=boot_med), aes(factor(median)))+
+  geom_histogram(binwidth=1, color='grey', fill='powderblue')+
+  labs(title="Distribution of Median from 1000 Bootrap Samples",
+       x='Median')+
+  theme_classic()+
+  theme(plot.title = element_text(size = 11, face='bold'))
+  
+```
+
+### 90% Confidence Interval
+Given the quntiles above, we can infer with 90% confidence that the median of the population __X__ is between __`r quantile(boot_med,.05)`__ and __`r quantile(boot_med,.95)`__ (5% and 95% quantiles). In other words, if we drew 100 samples from the same population, 90 sampes would have the median within that range, assuming our original sample was representative of the population.
+
+
+# Boostrap Applications in Model Validation
+The basic technique illustrated above can be extended to a variety of use cases. 
