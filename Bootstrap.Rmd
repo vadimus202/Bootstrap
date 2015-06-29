@@ -1,6 +1,6 @@
 ---
 title: "Managing Model Uncertainty<BR>
-          Part 2: Bootstrap"
+Part 2: Bootstrap"
 author: "Vadim Bondarenko<BR>FI Consulting"
 date: "July 15, 2015"
 output: html_document
@@ -20,11 +20,15 @@ library(ggthemes)
 library(scales)
 library(png)
 library(grid)
+library(car)
+library(boot)
 library(dplyr)
 
+# options("scipen"=2)
 opts_chunk$set(echo = TRUE, results='asis', fig.align = 'center')
 theme_set(theme_classic())
 panderOptions('table.split.table', Inf)
+panderOptions("big.mark", ",")
 
 ```
 
@@ -49,11 +53,11 @@ Suppose we have a sample __x__ of size __n=9__, which is simply numbers 1 throug
 x = seq(1:9)
 
 # print x
-matrix(x, nrow = 1, dimnames = list("X", paste('Obs', 1:9))) %>% 
-  pandoc.table("Sample Observations X")
+matrix(x, nrow = 1, dimnames = list("x", paste('Obs', 1:9))) %>% 
+    pandoc.table("Sample Observations x")
 
 # print summary of x
-summary(x) %>% t() %>%  pandoc.table("Summary of X")
+summary(x) %>% t() %>%  pandoc.table("Summary of sample x")
 ```
 
 
@@ -62,7 +66,7 @@ The observe __median = `r median(x)`__ (the middle __Obs 5__), but if __x__ is a
 There is no analytical way to derive the distribution of the median. However, we can use bootstrap to derive it empirically from the data.
 
 ### Basic Bootrap  
-To illustrate the basic setup, we begin by randomly drawing **R=10** samples __with replacement__ from out  sample __X__. Each random draw is of the same length (n=9) as our original sample.
+To illustrate the basic setup, we begin by randomly drawing **R=10** samples __with replacement__ from out  sample __x__. Each random draw is of the same length (n=9) as our original sample.
 
 ```{r}
 
@@ -73,27 +77,27 @@ B = matrix(nrow = 10, ncol = 9,
 # loop 10 times
 set.seed(111)
 for(i in 1:10){
-  # draw random samples from X
-  B[i,] = sample(x, size = length(x), replace = TRUE) %>% sort()
+    # draw random samples from x
+    B[i,] = sample(x, size = length(x), replace = TRUE) %>% sort()
 }
 
 
 ```
 
-As a result, we have a __R x n__ matrix of bootrapped observations.  
+As a result, we have a __R x n__ matrix of bootstrapped observations.  
 ```{r echo=FALSE}
 
 matrix(x, nrow = 1,ncol = 9,
-       dimnames = list("Original Sample X", 
+       dimnames = list("Original Sample x", 
                        paste("Obs", 1:9))) %>% 
-  rbind(B) %>% 
-  pandoc.table(emphasize.strong.cols=5,
-               emphasize.strong.rows=1, caption='Bootstrap Results')
+    rbind(B) %>% 
+    pandoc.table(emphasize.strong.cols=5,
+                 emphasize.strong.rows=1, caption='Bootstrap Results')
 
 ```
 
 
-Since we drew 10 random samples of the same size as our original sample (9), any given observation **X<sub>i</sub>** will appear more than once in some samples and none at all in others. For example, the number 4 appears four times in Sample 1, but is missing completely from bootstrap Sample 2.
+Since we drew 10 random samples of the same size as our original sample (9), any given observation **x<sub>i</sub>** will appear more than once in some samples and none at all in others. For example, the number 4 appears four times in Sample 1, but is missing completely from bootstrap Sample 2.
 
 The middle column with __Observation 5__ contains the medians of each bootstrapped sample. It provides us with the empirical distribution of the median, from which we can infer the mean, quantiles, and extreme values of the population median: 
 ```{r, echo=FALSE}
@@ -105,15 +109,15 @@ apply(B,1,median) %>% summary() %>% t() %>%  pandoc.table()
 We can also visualize the distribution of the bootstrapped median:
 ```{r, echo=FALSE, fig.width=4,fig.height=2.5}
 ggplot(data.frame(median=apply(B,1,median)),aes(factor(median)))+
-  geom_histogram(binwidth=1, color='grey', fill='powderblue')+
-  labs(title="Distribution of Median from 10 Bootrap Samples",
-       x='Median')+
-  theme(plot.title = element_text(size = 11, face='bold'))
-  
+    geom_histogram(binwidth=1, color='grey', fill='powderblue')+
+    labs(title="Distribution of Median from 10 Bootrap Samples",
+         x='Median')+
+    theme(plot.title = element_text(size = 11, face='bold'))
+
 ```
 
 
-Of course, __R=10__ random samples are not enought to generate any meaningfill distributions. We can repeat the same bootstrap excercise with __R=1000__ random samples, which gives us a matrix B sized 1000 by 9.
+Of course, __R=10__ random samples are not enough to generate any meaningful distributions. We can repeat the same bootstrap exercise with __R=1000__ random samples, which gives us a matrix B sized 1000 by 9.
 ```{r}
 
 R = 1000  # number of bootstrap samples
@@ -125,13 +129,13 @@ B = matrix(nrow = R, ncol = n,
 # loop R times
 set.seed(111)
 for(i in 1:R){
-  # draw random samples from X
-  B[i,] = sample(x, size = n, replace = TRUE)
+    # draw random samples from x
+    B[i,] = sample(x, size = n, replace = TRUE)
 }
 
 ```
 
-Taking the row medians of bootstrp matrix __B__ gives us the empirical distribution of the median.
+Taking the row medians of bootstrap matrix __B__ gives us the empirical distribution of the median.
 
 __Empirical Quantiles of Bootstrpped Median__
 ```{r, echo=FALSE, fig.width=4,fig.height=2.5}
@@ -139,21 +143,207 @@ __Empirical Quantiles of Bootstrpped Median__
 boot_med = apply(B,1,median)
 
 boot_med %>% 
-  quantile(c(0, 0.01, 0.05, 0.10, 0.50, 0.90, 0.95, 0.99, 1)) %>% 
-  t() %>%  pandoc.table()
+    quantile(c(0, 0.01, 0.05, 0.10, 0.50, 0.90, 0.95, 0.99, 1)) %>% 
+    t() %>%  pandoc.table()
 
 ggplot(data.frame(median=boot_med), aes(factor(median)))+
-  geom_histogram(binwidth=1, color='grey', fill='powderblue')+
-  labs(title="Distribution of Median from 1000 Bootrap Samples",
-       x='Median')+
-  theme_classic()+
-  theme(plot.title = element_text(size = 11, face='bold'))
-  
+    geom_histogram(binwidth=1, color='grey', fill='powderblue')+
+    labs(title="Distribution of Median from 1000 Bootrap Samples",
+         x='Median')+
+    theme_classic()+
+    theme(plot.title = element_text(size = 11, face='bold'))
+
 ```
 
 ### 90% Confidence Interval
-Given the quntiles above, we can infer with 90% confidence that the median of the population __X__ is between __`r quantile(boot_med,.05)`__ and __`r quantile(boot_med,.95)`__ (5% and 95% quantiles). In other words, if we drew 100 samples from the same population, 90 sampes would have the median within that range, assuming our original sample was representative of the population.
+Given the quantiles above, we can infer with 90% confidence that the median of the population __X__ is between __`r quantile(boot_med,.05)`__ and __`r quantile(boot_med,.95)`__ (5% and 95% quantiles). In other words, if we drew 100 samples from the same population, 90 samples would have the median within that range, assuming our original sample was representative of the population.
 
 
 # Boostrap Applications in Model Validation
 The basic technique illustrated above can be extended to a variety of use cases. 
+
+
+## Stability of Regression Coefficients
+
+
+
+### The Data
+We use the dataset from R's 'ISLR' package, which contains simulated credit default data. It contains 10,000 observations with the following variables:
+
+- __Default__: Yes/No
+- __Student__: Yes/No
+- __Balance__
+- __Income__
+
+```{r}
+# load default data
+library(ISLR)
+data(Default)
+data = Default
+```
+
+```{r echo=FALSE}
+# print sample of data
+head(data) %>% 
+    format(big.mark=",", digits=3, nsmall=1) %>% 
+    kable(caption = "Sample of Default Data",
+          align = 'r',
+          format='html', table.attr='width=40%')
+```
+
+### The Model  
+We fit a simple logistic regression with Default as the dependent variable, and Student, Balance, and Income as the predictors.
+```{r}
+logit = glm(default ~ balance + student + income, 
+              data=data, family = binomial(link = "logit"))
+```
+
+```{r echo=FALSE}
+logit %>% summary() %>% coef() %>% 
+    kable(caption = "Logistic Regression: Probability of Default",
+          format='html', digits=6, table.attr='width=75%')
+
+cat("<BR>")
+```
+
+The p-values for model coefficients suggests that __Balance__ and __Student__ are highly significant predictors of __Default__. Higher balances are associated with higher incidence of default, and being a student lowers the probability of default. __Income__ appears to be insignificant. 
+
+### Boostrap Model Coefficients
+
+As part of model validation, the fit of the model and the significance of its coefficients are typically tested. These parametric tests rely on assumptions about the underlying distributions (normal, F, t, Chi-Square, etc.)
+
+We can use bootstrapping to calculate any complex test statistic and infer confidence intervals without making any assumptions about the distribution of these statistics.
+
+Next, we use bootstrap to test the stability of regression coefficients.
+
+```{r}
+
+R = 10                          # number of bootstrap samples
+n = nrow(data)                  # sample size
+k = length(coef(logit))      # number of coefficients
+    
+# set up a empty Rxn matrix B
+B = matrix(nrow = R, ncol = k,
+           dimnames = list(paste("Sample",1:R), 
+                           names(coef(logit))))
+# loop R times
+set.seed(111)
+for(i in 1:R){
+    # sample default data with replacement
+    boot.data = data[sample(x = 1:n, size = n, replace = TRUE), ]
+    # fit the model
+    boot.logit = glm(default ~ balance + student + income, 
+              data=boot.data, family = binomial(link = "logit"))
+    # record the coefficients
+    B[i,] = coef(boot.logit)
+}
+
+```
+
+As a result, we have a __R x n__ matrix of bootstrapped regression coefficients.
+
+```{r echo=FALSE}
+
+matrix(coef(logit), nrow = 1,
+       dimnames = list("Full Sample", 
+                       c("Constant","Balance","Student","Income"))) %>% 
+    rbind(B) %>% 
+    format(scientific=F, digits=1) %>% 
+    pandoc.table(emphasize.strong.rows=1, 
+                 caption='Bootstrapped Logistic Regression Model Coefficients')
+
+```
+
+
+### Using *boot* function in R
+
+R's *boot* package provides a convenient function to perform bootstrapping for a variety of measures. Since generating a high number of random samples can be time-consuming for large datasets, the *boot* function allows to split the bootstrapping job across a cluster of computers or across multiple cores of the local CPU. 
+
+```{r cache=TRUE}
+library(boot)
+library(parallel)
+
+# function to return bootstrapped coefficients
+myLogitCoef <- function(data, indices, formula) {
+  d <- data[indices,]
+  fit <- glm(formula, data=d, family = binomial(link = "logit"))
+  return(coef(fit))
+}
+
+# set up cluster
+cl<-makeCluster(4)
+clusterExport(cl, 'myLogitCoef')
+
+set.seed(373)
+coef.boot <- boot(data=data, statistic=myLogitCoef, R=1000, 
+                formula=default ~ balance + student + income,
+                parallel = 'snow', ncpus=4, cl=cl)
+stopCluster(cl)
+
+```
+
+### Univariate Distribution of Boostrapped Coefficients
+
+The plots below illustrate the distribution of bootstrapped model coefficients and 95% empirical confidence intervals (thick black line at the bottom of the chart). For comparison, the graphs also show the normal distributions (red bell curves) and 95% confidence intervals (thick red line) that are implied by the coefficients and their standard errors (assuming normality). 
+
+```{r echo=FALSE, cache=TRUE,message=FALSE, fig.width=6, fig.height=3}
+
+coef.comp <- 
+  data.frame(
+    var = row.names(coef(summary(logit))),
+    coef = coef(summary(logit))[,1],
+    se = coef(summary(logit))[,2])
+
+ci <- confint(logit)
+ci.boot <- confint(coef.boot, type='perc')
+
+
+for(i in 2:nrow(coef.comp)){
+  ci.df <- data.frame(x = range(ci[i,]),
+                      x.bt = range(ci.boot[i,])) %>% 
+    mutate(y.max = max(density(coef.boot$t[,i])$y),
+           y = y.max/100, 
+           y.bt = -y.max/100)
+  
+  p <- ggplot(data.frame(coeff = coef.boot$t[,i]), aes(x=coeff)) +
+    geom_histogram(aes(y=..density..), 
+                   binwidth = diff(range(coef.boot$t[,i]))/30,
+                   fill='powderblue', color='black') +
+    stat_function(fun = dnorm, color='red',
+                  args = list(mean = coef.comp$coef[i], 
+                              sd = coef.comp$se[i])) + 
+    geom_line(aes(x, y), ci.df, size=2, color='red') +
+    geom_line(aes(x.bt, y.bt), ci.df, size=2) +
+    ggtitle(coef.comp$var[i])
+  print(p)
+}
+ 
+
+```
+
+We can also examine the correlation between model coefficients by plotting their multivariate distributions. 
+
+- Each dot represents a set of model coefficient estimates from each bootstrap iteration.
+- The red dashed lines mark 50%, 95%, and 99% confidence intervals.
+
+```{r echo=FALSE, fig.width=6, fig.height=4}
+
+B <- data.frame(coef.boot$t)
+names(B) <- names(coef(logit))
+ggplot(B, aes(x=studentYes, y=balance)) +
+  geom_point(size=.7, color='navyblue')+
+    stat_ellipse(type = "norm", linetype = 1, level = 0.001, color='red', size=2) +
+    stat_ellipse(type = "norm", linetype = 2, level = 0.50, color='red', size=.8) +
+  stat_ellipse(type = "norm", linetype = 2, level = 0.95, color='red', size=.8) +
+  stat_ellipse(type = "norm", linetype = 2, level = 0.99, color='red', size=.8) +
+  ggtitle('Bivariate Distribution of Bootstrapped Regression Coefficients')
+
+
+```
+
+### Conclusion
+
+The plots above suggest that in the case of our data, the model coefficients distribution *approximates* normal. However, the bootstrapped confidence intervals have the advantage of not relying on any distributional assumptions. Moreover, they allow us to validate the appropriateness of using normality assumption.
+
+
+## Model Prediction Accuracy
