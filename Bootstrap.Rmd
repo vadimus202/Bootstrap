@@ -25,6 +25,7 @@ library(ggthemes)
 library(scales)
 library(png)
 library(grid)
+library(caret)
 library(car)
 library(boot)
 library(ROCR)
@@ -165,6 +166,8 @@ ggplot(data.frame(median=boot_med), aes(factor(median)))+
 Given the quantiles above, we can infer with 90% confidence that the median of the population __X__ is between __`r quantile(boot_med,.05)`__ and __`r quantile(boot_med,.95)`__ (5% and 95% quantiles). In other words, if we drew 100 samples from the same population, 90 samples would have the median within that range, assuming our original sample was representative of the population.
 
 
+
+
 # Boostrap Applications in Model Validation
 The basic technique illustrated above can be extended to a variety of use cases. 
 
@@ -174,40 +177,48 @@ The basic technique illustrated above can be extended to a variety of use cases.
 
 
 ### The Data
-We use the dataset from R's 'ISLR' package, which contains simulated credit default data. It contains 10,000 observations with the following variables:
 
-- __Default__: Yes/No
-- __Student__: Yes/No
-- __Balance__
-- __Income__
+We used the dataset consisting of 1,000 consumer credit profiles obtained from a german bank. For each consumer the binary response variable "credit" (Good/Bad) is available. In addition, 20 covariates that are assumed to influence creditworthiness were recorded. Examples of included predictors are listed below. The full dataset description is available [here](https://onlinecourses.science.psu.edu/stat857/node/222).
+
+- Account Balance
+- Payment Status
+- Savings/Stocks Value
+- Length of Current Employment
+- Installment % of Income
+- Marital Status / Gender
+- Occupation
+- Duration at Current Address
+- Rent/Own
+
+
 
 ```{r}
-# load default data
-library(ISLR)
-data(Default)
-data = Default %>% filter(balance>0)
-```
-
-```{r echo=FALSE}
-# print sample of data
-head(data) %>% 
-    format(big.mark=",", digits=3, nsmall=1) %>% 
-    kable(caption = "Sample of Default Data",
-          align = 'r',
-          format='html', table.attr='width=40%')
+# load credit data
+library(caret)
+data(GermanCredit)
+data = GermanCredit %>% rename(credit = Class)
 ```
 
 ### The Model  
-We fit a simple logistic regression with Default as the dependent variable, and Student, Balance, and Income as the predictors.
-```{r}
-logit = glm(default ~ balance + student + income, 
-              data=data, family = binomial(link = "logit"))
+We fit a simple logistic regression to predict the probability of **Good vs. Bad** credit qaulity. We initially include all independent variables, then uses stepwise variable selection to fit the final model.
+
+```{r cache=TRUE}
+set.seed(304)
+logit = glm(credit ~
+                 Amount + Age + Duration +
+                 # Purpose.NewCar+
+                Personal.Male.Single+
+                 Purpose.UsedCar+
+                 Property.RealEstate
+            , 
+            data=data, family = binomial(link = "logit"))
+
 ```
 
 ```{r echo=FALSE}
 logit %>% summary() %>% coef() %>% 
-    kable(caption = "Logistic Regression: Probability of Default",
-          format='html', digits=6, table.attr='width=75%')
+    kable(caption = "Logistic Regression: Probability of Good Credit",
+          format='html', digits=4, table.attr='width=75%')
 
 cat("<BR>")
 ```
@@ -238,7 +249,7 @@ for(i in 1:R){
     # sample default data with replacement
     boot.data = data[sample(x = 1:n, size = n, replace = TRUE), ]
     # fit the model
-    boot.logit = glm(default ~ balance + student + income, 
+    boot.logit = glm(logit$formula, 
               data=boot.data, family = binomial(link = "logit"))
     # record the coefficients
     B[i,] = coef(boot.logit)
@@ -246,13 +257,15 @@ for(i in 1:R){
 
 ```
 
-As a result, we have a __R x n__ matrix of bootstrapped regression coefficients.
+As a result, we have a __R x k__ matrix of bootstrapped regression coefficients.
 
 ```{r echo=FALSE}
 
 matrix(coef(logit), nrow = 1,
        dimnames = list("Full Sample", 
-                       c("Constant","Balance","Student","Income"))) %>% 
+                       gsub("\\."," ", names(coef(logit)))
+                       )
+       ) %>% 
     rbind(B) %>% 
     format(scientific=F, digits=1) %>% 
     pandoc.table(emphasize.strong.rows=1, 
@@ -282,7 +295,7 @@ clusterExport(cl, 'myLogitCoef')
 
 set.seed(373)
 coef.boot <- boot(data=data, statistic=myLogitCoef, R=1000, 
-                formula=default ~ balance + student + income,
+                formula= logit$formula,
                 parallel = 'snow', ncpus=4, cl=cl)
 stopCluster(cl)
 
@@ -336,7 +349,7 @@ We can also examine the correlation between model coefficients by plotting their
 
 B <- data.frame(coef.boot$t)
 names(B) <- names(coef(logit))
-ggplot(B, aes(x=studentYes, y=balance)) +
+ggplot(B, aes(x=Duration, y=Amount)) +
   geom_point(size=.7, color='navyblue')+
     stat_ellipse(type = "norm", linetype = 1, level = 0.001, color='darkorange1', size=2) +
     stat_ellipse(type = "norm", linetype = 2, level = 0.50, color='darkorange1', size=.8) +
@@ -368,13 +381,14 @@ library(ROCR)
 
 #score test data set
 prob = predict(logit, type='response', data)
-pred = prediction(prob, data$default)
+pred = prediction(prob, data$credit)
 
 # auc
 auc = performance(pred,"auc")@y.values[[1]][1]
 
 perf <- performance(pred,"tpr","fpr")
-plot(perf, main= paste("Logistic Regression ROC Curve: AUC =", round(auc,2)), cex.main=1)
+plot(perf, col="navyblue", cex.main=1,
+     main= paste("Logistic Regression ROC Curve: AUC =", round(auc,2)))
 abline(a=0, b = 1, col='darkorange1')
 
 
@@ -394,28 +408,25 @@ B = matrix(nrow = R, ncol = 2,
 set.seed(701)
 for(i in 1:R){
     
+    # draw a random sample
     obs.boot <- sample(x = 1:n, size = n, replace = T)
     data.boot <- data[obs.boot, ]
-    logit.boot <- glm(default ~ income + student , 
+    
+    # fit the model on bootstrap sample
+    logit.boot <- glm(logit$formula , 
                       data=data.boot,
                       family = binomial(link = "logit"))
     
     # apply model to original data
     prob = predict(logit.boot, type='response', data)
-    pred = prediction(prob, data$default)
+    pred = prediction(prob, data$credit)
     auc = performance(pred,"auc")@y.values[[1]][1]
-#     cmat = table(predict(logit.boot, type='response', data)>0.30,
-#                data$default=='Yes')
-#     sens = cmat[2,2]/sum(cmat[,2])
     B[i, 1] = auc
     
     # apply model to bootstrap data
     prob = predict(logit.boot, type='response', data.boot)
-    pred = prediction(prob, data.boot$default)
+    pred = prediction(prob, data.boot$credit)
     auc = performance(pred,"auc")@y.values[[1]][1]
-#     cmat = table(predict(logit.boot, type='response', data.boot)>0.30,
-#                data.boot$default=='Yes')
-#     sens = cmat[2,2]/sum(cmat[,2])
     B[i, 2] = auc
 }
 
@@ -423,6 +434,12 @@ B = as.data.frame(B) %>%
     mutate(optim = auc_boot - auc_orig)
 
 colMeans(B) %>% format(digits=6, scientific=F)
+
+```
+
+
+
+```{r echo=FALSE}
 
 ```
 
