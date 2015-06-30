@@ -162,8 +162,8 @@ ggplot(data.frame(median=boot_med), aes(factor(median)))+
 
 ```
 
-### 90% Confidence Interval
-Given the quantiles above, we can infer with 90% confidence that the median of the population __X__ is between __`r quantile(boot_med,.05)`__ and __`r quantile(boot_med,.95)`__ (5% and 95% quantiles). In other words, if we drew 100 samples from the same population, 90 samples would have the median within that range, assuming our original sample was representative of the population.
+### Bootstrap Confidence Interval
+Given the quantiles above, we can infer with __90% confidence__ that the median of the population __X__ is between __`r quantile(boot_med,.05)`__ and __`r quantile(boot_med,.95)`__ (5% and 95% quantiles). In other words, if we drew 100 samples from the same population, 90 samples would have the median within that range, assuming our original sample was representative of the population.
 
 
 
@@ -174,11 +174,12 @@ The basic technique illustrated above can be extended to a variety of use cases.
 
 ## Stability of Regression Coefficients
 
+Once a regression model is estimated, the statistical significance of coefficients is tested with parametric tests. In this section we supplement traditional tests by examining the distribution of coefficient estimates through bootstrapping.
 
 
 ### The Data
 
-We used the dataset consisting of 1,000 consumer credit profiles obtained from a german bank. For each consumer the binary response variable "credit" (Good/Bad) is available. In addition, 20 covariates that are assumed to influence creditworthiness were recorded. Examples of included predictors are listed below. The full dataset description is available [here](https://onlinecourses.science.psu.edu/stat857/node/222).
+We use a dataset consisting of 1,000 consumer credit profiles obtained from a German bank. For each consumer the binary response variable "credit" (Good/Bad) is available. In addition, 20 covariates that are assumed to influence creditworthiness were recorded. Examples of included predictors are listed below.
 
 - Account Balance
 - Payment Status
@@ -190,7 +191,7 @@ We used the dataset consisting of 1,000 consumer credit profiles obtained from a
 - Duration at Current Address
 - Rent/Own
 
-
+The full dataset description is available [here](https://onlinecourses.science.psu.edu/stat857/node/222).
 
 ```{r}
 # load credit data
@@ -200,7 +201,7 @@ data = GermanCredit %>% rename(credit = Class)
 ```
 
 ### The Model  
-We fit a simple logistic regression to predict the probability of **Good vs. Bad** credit qaulity. We initially include all independent variables, then uses stepwise variable selection to fit the final model.
+We fit a simple logistic regression to predict the probability of **Good vs. Bad** credit quality.
 
 ```{r cache=TRUE}
 set.seed(304)
@@ -303,7 +304,7 @@ stopCluster(cl)
 
 ### Univariate Distribution of Boostrapped Coefficients
 
-The plots below illustrate the distribution of bootstrapped model coefficients and 95% empirical confidence intervals (thick black line at the bottom of the chart). For comparison, the graphs also show the normal distributions (orange bell curves) and 95% confidence intervals (thick orange lines) that are implied by the coefficients and their standard errors (assuming normality). 
+The plots below illustrate the distribution of bootstrapped model coefficients and 95% empirical confidence intervals (thick black line at the bottom of the chart). For comparison, the graphs also show the normal distributions (orange bell curves) and 95% confidence intervals (thick orange lines) that are implied by the estimated coefficients and their standard errors (assuming normality). 
 
 ```{r echo=FALSE, cache=TRUE,message=FALSE, fig.width=6, fig.height=3}
 
@@ -328,7 +329,7 @@ for(i in 2:nrow(coef.comp)){
     geom_histogram(aes(y=..density..), 
                    binwidth = diff(range(coef.boot$t[,i]))/30,
                    fill='powderblue', color='grey') +
-    stat_function(fun = dnorm, color='darkorange1',
+    stat_function(fun = dnorm, color='darkorange1', size=.9,
                   args = list(mean = coef.comp$coef[i], 
                               sd = coef.comp$se[i])) + 
     geom_line(aes(x, y), ci.df, size=2, color='darkorange1') +
@@ -364,19 +365,22 @@ ggplot(B, aes(x=Duration, y=Amount)) +
 
 The plots above suggest that in the case of our data, the model coefficients distribution *approximates* normal. However, the bootstrapped confidence intervals have the advantage of not relying on any distributional assumptions. Moreover, they allow us to validate the appropriateness of using normality assumption.
 
+The same methodology can be used to bootstap the distribution of other complex regression model tests statistics and diagnostics (i.e. R<sup>2</sup>, AIC, BIC, etc.)
 
 ## Model Prediction Accuracy
 
 
 ### Area under the ROC curve
 
-The Receiver Operating Characteristic (ROC) curve for our default predicting logistic regression moddel is plotted below. The Area under the ROC curve (AUC) is one of widely-used measures of accuracy for classification models. 
+The Receiver Operating Characteristic (ROC) curve for our default predicting logistic regression model is plotted below. The Area under the ROC curve (AUC) is one of widely-used measures of accuracy for classification models. 
 
 - When AUC=1.00, the model assigns all observation to their true class with perfect accuracy. 
 - When AUC=0.50, the ROC curve is equivalent to the 45-degree line. It indicates the model is as accurate as guessing at random.
 - When AUC<0.50, the model accuracy is *worse* than guessing at random.
 
-```{r echo=F, fig.width=4, fig.height=4}
+We can derive the ROC curve and calculate AUC for the logistic regression fitted above using R's *ROCR* package.
+
+```{r fig.width=4, fig.height=4}
 library(ROCR)
 
 #score test data set
@@ -388,13 +392,17 @@ auc = performance(pred,"auc")@y.values[[1]][1]
 
 perf <- performance(pred,"tpr","fpr")
 plot(perf, col="navyblue", cex.main=1,
-     main= paste("Logistic Regression ROC Curve: AUC =", round(auc,2)))
+     main= paste("Logistic Regression ROC Curve: AUC =", round(auc,3)))
 abline(a=0, b = 1, col='darkorange1')
-
 
 ```
 
-### Bootstrap estimates of prediction error
+The logit model's __AUC=`r round(auc,3)`__, which is unrealistically high, because the predictions where made for the same dataset on which the model was estimated. As the next step, we use bootstrapping to adjust this prediction accuracy estimate. 
+
+### Bootstrap Estimates of Prediction Accuracy
+
+To illustrate the simplest approach, we generate **R=10** bootstrap samples, estimate the model on each, and then apply each fitted model to the *original sample* to give *R* estimates AUC. The overall estimate of prediction accuracy is the average of these *R* estimates (see first column in the table below). Further, we recalculate prediction accuracy when the fitted model is applied to the *bootstrap sample itself* (see the second column below).
+
 ```{r}
 
 R = 10
@@ -418,28 +426,91 @@ for(i in 1:R){
                       family = binomial(link = "logit"))
     
     # apply model to original data
-    prob = predict(logit.boot, type='response', data)
-    pred = prediction(prob, data$credit)
-    auc = performance(pred,"auc")@y.values[[1]][1]
-    B[i, 1] = auc
+    prob1 = predict(logit.boot, type='response', data)
+    pred1 = prediction(prob1, data$credit)
+    auc1 = performance(pred1,"auc")@y.values[[1]][1]
+    B[i, 1] = auc1
     
     # apply model to bootstrap data
-    prob = predict(logit.boot, type='response', data.boot)
-    pred = prediction(prob, data.boot$credit)
-    auc = performance(pred,"auc")@y.values[[1]][1]
-    B[i, 2] = auc
+    prob2 = predict(logit.boot, type='response', data.boot)
+    pred2 = prediction(prob2, data.boot$credit)
+    auc2 = performance(pred2,"auc")@y.values[[1]][1]
+    B[i, 2] = auc2
 }
-
-B = as.data.frame(B) %>% 
-    mutate(optim = auc_boot - auc_orig)
-
-colMeans(B) %>% format(digits=6, scientific=F)
 
 ```
 
 
 
 ```{r echo=FALSE}
+df = as.data.frame(B) %>% 
+    rbind(colMeans(B)) %>% 
+    mutate(optim = auc_boot - auc_orig) %>% 
+    round(digits = 3)
+
+row.names(df) <- c(paste("Bootstrap Sample", 1:R), 'AVERAGE')
+names(df) <- c("AUC on original sample",
+               "AUC on bootstrap sample",
+               "Optimism")
+
+
+pandoc.table(
+    df, emphasize.rownames=F,
+    emphasize.strong.rows=R+1
+)
+
 
 ```
 
+Not surprisingly, the values in the second column are higher on the average than those in the first column. The improved bootstrap AUC estimate focuses on the difference between the first and second columns, called appropriately the "optimism"; it is the amount by which the average AUC (or " the apparent prediction accuracy") overestimates the true prediction accuracy. The overall estimate of optimism is the average of the *R* differences between the first and second columns, a value of __`r df[R+1,3]`__ in this example.
+
+Once an estimate of optimism is obtained, it is subtracted from the apparent AUC to obtain an improved estimate of prediction accuracy. Here we obtain __`r round(auc,3)` - `r df[R+1,3]` = `r round(auc,3) - df[R+1,3]`__. 
+
+```{r echo=FALSE, cache=TRUE}
+
+R = 200
+
+# empty Rx2 matrix for bootstrap results 
+B2 = matrix(nrow = R, ncol = 2,
+           dimnames = list(paste('Sample',1:R),
+                           c("auc_orig","auc_boot")))
+
+set.seed(602)
+for(i in 1:R){
+    
+    # draw a random sample
+    obs.boot <- sample(x = 1:n, size = n, replace = T)
+    data.boot <- data[obs.boot, ]
+    
+    # fit the model on bootstrap sample
+    logit.boot <- glm(logit$formula , 
+                      data=data.boot,
+                      family = binomial(link = "logit"))
+    
+    # apply model to original data
+    prob1 = predict(logit.boot, type='response', data)
+    pred1 = prediction(prob1, data$credit)
+    auc1 = performance(pred1,"auc")@y.values[[1]][1]
+    B2[i, 1] = auc1
+    
+    # apply model to bootstrap data
+    prob2 = predict(logit.boot, type='response', data.boot)
+    pred2 = prediction(prob2, data.boot$credit)
+    auc2 = performance(pred2,"auc")@y.values[[1]][1]
+    B2[i, 2] = auc2
+}
+
+B2df <- as.data.frame(B2)
+
+optim = round(mean(B2df$auc_boot) - mean(B2df$auc_orig),3)
+
+auc.adj = round(auc,3) - optim
+
+```
+
+
+
+Of course 10 bootstrap samples are too few; repeating with `r R` samples gave a value of  for the simple bootstrap estimate, and an estimate of `r optim` for the optimism leading to the value __`r round(auc,3)` - `r optim` = `r auc.adj`__ for the improved estimate of prediction accuracy. Essentially, we have added a *bias correction* to the apparent AUC.
+
+**For more details on this approach see:**  
+*Efron, B., & Tibshirani, R. (1993). "An Introduction to the Bootstrap". Chapman and Hall*
