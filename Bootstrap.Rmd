@@ -1,6 +1,5 @@
 ---
-title: "Managing Model Uncertainty<BR>
-Part 2: Bootstrap"
+title: "Bootstrapping Approach to Managing Model Uncertainty"
 author: "Vadim Bondarenko<BR>FI Consulting"
 date: "July 15, 2015"
 output: 
@@ -47,8 +46,19 @@ grid.raster(img)
 ```
 
 
-# What is Bootstrap?
+# Introduction
 
+Model validation is an important step in the modeling process and helps in assessing the reliability of models before they can be used in decision making. Model validity can be judged by the stability and reasonableness of the regression coefficients, the plausibility and usability of the regression function and ability to generalize inference drawn from the regression analysis. We introduce the basic concept of bootstrap and review its uses in regression model validation.
+
+
+## When to use Bootstrap?
+
+The bootstrap procedure is useful when:
+
+1. The theoretical distribution of a statistic is complicated or unknown.
+2. The sample size is insufficient for straightforward statistical inference.
+
+To illustrate, we use bootstrap to derive an empirical distribution and confidence intervals for a sample median, which lacks a theoretical distribution.
 
 ## Basic Example: Confidence Intervals of a Sample Median  
 
@@ -68,11 +78,11 @@ summary(x) %>% t() %>%  pandoc.table("Summary of sample x")
 ```
 
 
-The observe __median = `r median(x)`__ (the middle __Obs 5__), but if __x__ is a representative sample from a population and __`r median(x)`__ is the estimate of median for that population, what is the __90% confidence interval__ around that estimate?
+The observe __median = `r median(x)`__ (the middle __Observation 5__), but if __x__ is a representative sample from a population __X__ and __`r median(x)`__ is the estimate of median for that population, what is the __90% confidence interval__ around that estimate?
 
-There is no analytical way to derive the distribution of the median. However, we can use bootstrap to derive it empirically from the data.
+There is no analytical way to derive the distribution of the median. Plus, the sample is too small. However, we can use bootstrap to derive it empirically from the data.
 
-### Basic Bootrap  
+### Basic Bootstrap  
 To illustrate the basic setup, we begin by randomly drawing **R=10** samples __with replacement__ from out  sample __x__. Each random draw is of the same length (n=9) as our original sample.
 
 ```{r}
@@ -99,12 +109,15 @@ matrix(x, nrow = 1,ncol = 9,
                        paste("Obs", 1:9))) %>% 
     rbind(B) %>% 
     pandoc.table(emphasize.strong.cols=5,
-                 emphasize.strong.rows=1, caption='Bootstrap Results')
+                 emphasize.strong.rows=1, caption='Bootstraped Samples')
 
 ```
 
 
-Since we drew 10 random samples of the same size as our original sample (9), any given observation **x<sub>i</sub>** will appear more than once in some samples and none at all in others. For example, the number 4 appears four times in Sample 1, but is missing completely from bootstrap Sample 2.
+__Note:__ Since we drew 10 random samples of the same size as our original sample (9), any given observation **x<sub>i</sub>** will appear more than once in some samples and none at all in others. For example, the number 4 appears four times in Sample 1, but is missing completely from bootstrap Sample 2.
+
+
+### Bootstrapping the Statistic of Interest
 
 The middle column with __Observation 5__ contains the medians of each bootstrapped sample. It provides us with the empirical distribution of the median, from which we can infer the mean, quantiles, and extreme values of the population median: 
 ```{r, echo=FALSE}
@@ -117,7 +130,7 @@ We can also visualize the distribution of the bootstrapped median:
 ```{r, echo=FALSE, fig.width=4,fig.height=2.5}
 ggplot(data.frame(median=apply(B,1,median)),aes(factor(median)))+
     geom_histogram(binwidth=1, color='grey', fill='powderblue')+
-    labs(title="Distribution of Median from 10 Bootrap Samples",
+    labs(title="Distribution of Median from 10 Bootstrap Samples",
          x='Median')+
     theme(plot.title = element_text(size = 11, face='bold'))
 
@@ -142,7 +155,7 @@ for(i in 1:R){
 
 ```
 
-Taking the row medians of bootstrap matrix __B__ gives us the empirical distribution of the median.
+Drawing a sufficiently large amounts of bootstrap samples and taking the row medians of bootstrap matrix __B__ results in a nice bell-shaped distribution of our median estimate.
 
 __Empirical Quantiles of Bootstrpped Median__
 ```{r, echo=FALSE, fig.width=4,fig.height=2.5}
@@ -155,7 +168,7 @@ boot_med %>%
 
 ggplot(data.frame(median=boot_med), aes(factor(median)))+
     geom_histogram(binwidth=1, color='grey', fill='powderblue')+
-    labs(title="Distribution of Median from 1000 Bootrap Samples",
+    labs(title="Distribution of Median from 1000 Bootstrap Samples",
          x='Median')+
     theme_classic()+
     theme(plot.title = element_text(size = 11, face='bold'))
@@ -168,8 +181,18 @@ Given the quantiles above, we can infer with __90% confidence__ that the median 
 
 
 
-# Boostrap Applications in Model Validation
-The basic technique illustrated above can be extended to a variety of use cases. 
+# Bootstrap Applications in Model Validation
+The basic technique illustrated above can be extended to a variety of use cases, including:
+
+1. Goodness of fit (F-stat, R<sup>2</sup>, AIC)
+2. Statistical significance of the estimated parameters (t-test and p-values)
+3. Residuals diagnostics (normality, heteroscdastisity)
+4. Prediction Accuracy (Mean Squared Errors, Accuracy, Sensitivity/Specificity, Kolmogorov-Smirnov stat, etc.)
+
+We can use bootstrapping to examine the distribution of these characteristics and their sensitivity to the natural variation in the sample without the need for collecting additional data.
+
+Below, we provide just a few examples of its application, but the possibilities of using bootstrap methodology for model validation are limitless.
+
 
 
 ## Stability of Regression Coefficients
@@ -226,7 +249,7 @@ cat("<BR>")
 
 The p-values for model coefficients suggests that __Balance__ and __Student__ are highly significant predictors of __Default__. Higher balances are associated with higher incidence of default, and being a student lowers the probability of default. __Income__ appears to be insignificant. 
 
-### Boostrap Model Coefficients
+### Bootstrap Model Coefficients
 
 As part of model validation, the fit of the model and the significance of its coefficients are typically tested. These parametric tests rely on assumptions about the underlying distributions (normal, F, t, Chi-Square, etc.)
 
@@ -302,7 +325,7 @@ stopCluster(cl)
 
 ```
 
-### Univariate Distribution of Boostrapped Coefficients
+### Univariate Distribution of Bootstrapped Coefficients
 
 The plots below illustrate the distribution of bootstrapped model coefficients and 95% empirical confidence intervals (thick black line at the bottom of the chart). For comparison, the graphs also show the normal distributions (orange bell curves) and 95% confidence intervals (thick orange lines) that are implied by the estimated coefficients and their standard errors (assuming normality). 
 
@@ -365,7 +388,7 @@ ggplot(B, aes(x=Duration, y=Amount)) +
 
 The plots above suggest that in the case of our data, the model coefficients distribution *approximates* normal. However, the bootstrapped confidence intervals have the advantage of not relying on any distributional assumptions. Moreover, they allow us to validate the appropriateness of using normality assumption.
 
-The same methodology can be used to bootstap the distribution of other complex regression model tests statistics and diagnostics (i.e. R<sup>2</sup>, AIC, BIC, etc.)
+The same methodology can be used to bootstrap the distribution of other complex regression model tests statistics and diagnostics (i.e. R<sup>2</sup>, AIC, BIC, etc.)
 
 ## Model Prediction Accuracy
 
