@@ -46,9 +46,14 @@ grid.raster(img)
 ```
 
 
+
+
+
+
+
 # Introduction
 
-Model validation is an important step in the modeling process and helps in assessing the reliability of models before they can be used in decision making. Model validity can be judged by the stability and reasonableness of the regression coefficients, the plausibility and usability of the regression function and ability to generalize inference drawn from the regression analysis. We introduce the basic concept of bootstrap and review its uses in regression model validation.
+Model validation is an important step in the modeling process and helps in assessing the reliability of models before they can be used in decision making. Model validity can be judged by the stability and reasonableness of the regression coefficients, the plausibility and usability of the regression function and ability to generalize inference drawn from the regression analysis. We introduce the basic concept of bootstrap and review some of its applications in regression model validation.
 
 
 ## When to use Bootstrap?
@@ -62,11 +67,16 @@ To illustrate, we use bootstrap to derive an empirical distribution and confiden
 
 ## Basic Example: Confidence Intervals of a Sample Median  
 
+
+### The Goal
+
+Quantify a statistical confidence interval around the median of the values observed in a given data sample.  
+
 ### The Data
-Suppose we have a sample __x__ of size __n=9__, which is simply numbers 1 through 9. We assume that __x__ is a representative sample of independent observation from a larger unknown population __X__.
+Suppose we have a sample __x__ of size __n=9__, which is simply numbers 1 through 9. We assume that __x__ is a representative sample of independent observation from a larger unknown population __X__ (this can be a heroic assumption, and should be addressed in the analysis).
 
 ```{r}
-# hypothetical sample x = {1,2, ... ,8,9}
+# generate hypothetical sample x = {1,2, ... ,8,9}
 x = seq(1:9)
 
 # print x
@@ -83,7 +93,7 @@ The observe __median = `r median(x)`__ (the middle __Observation 5__), but if __
 There is no analytical way to derive the distribution of the median. Plus, the sample is too small. However, we can use bootstrap to derive it empirically from the data.
 
 ### Basic Bootstrap  
-To illustrate the basic setup, we begin by randomly drawing **R=10** samples __with replacement__ from out  sample __x__. Each random draw is of the same length (n=9) as our original sample.
+To illustrate the basic setup, we begin by randomly drawing **R=10** samples __with replacement__ from our sample __x__. Each random draw is of the same length (n=9) as our original sample.
 
 ```{r}
 
@@ -183,11 +193,11 @@ Given the quantiles above, we can infer with __90% confidence__ that the median 
 
 * Estimator of interest
     - can be an algorithm of almost any complexity
-    - bootstrapped estimate must be smooth function of data to be useful
+    - bootstrapped estimate must be smooth function of data to be useful (no jumps)
 * The original sample must be a fair representation of the underlying population
     - often a heroic assumption
 * Simulation replaces theoretical calculation
-    - removes need for math skills
+    - removes need for math skills (no need to look up distribution formulas)
     - does not remove need for thought, domain knowledge, and creativity
 * Mitigate risk
     - validate code *very* carefully - garbage in, garbage out
@@ -196,18 +206,25 @@ Given the quantiles above, we can infer with __90% confidence__ that the median 
 
 
 
+
+
+
+
+
 # Bootstrap Applications in Model Validation
-The basic technique illustrated above can be extended to a variety of use cases, including:
+The basic technique illustrated above can be extended to a variety of use cases in the area of model validation:
 
 1. Goodness of fit (F-stat, R<sup>2</sup>, AIC)
 2. Statistical significance of the estimated parameters (t-test and p-values)
-3. Residuals diagnostics (normality, heteroscedastisity)
+3. Residuals diagnostics (normality, heteroscedasticity)
 4. Prediction Accuracy (Mean Squared Errors, Accuracy, Sensitivity/Specificity, Kolmogorov-Smirnov stat, etc.)
 5. Estimates of model bias & variance (similar to cross-validation)
 
 We can use bootstrapping to examine the distribution of these characteristics and their sensitivity to the natural variation in the sample without the need for collecting additional data.
 
 Below, we provide just a few examples of its application, but the possibilities of using bootstrap methodology for model validation are limitless.
+
+
 
 
 
@@ -240,16 +257,15 @@ data = GermanCredit %>% rename(credit = Class)
 ```
 
 ### The Model  
-We fit a simple logistic regression to predict the probability of **Good vs. Bad** credit quality.
+For simplicity, we use only a handful of variables to fit a simple logistic regression that estimates the linear effect of the logit of those variables on the probability of having a **Good vs. Bad** credit quality.
 
 ```{r cache=TRUE}
 set.seed(304)
 logit = glm(credit ~
-                 Amount + Age + Duration +
-                 # Purpose.NewCar+
+                Amount + Age + Duration +
                 Personal.Male.Single+
-                 Purpose.UsedCar+
-                 Property.RealEstate
+                Purpose.UsedCar+
+                Property.RealEstate
             , 
             data=data, family = binomial(link = "logit"))
 
@@ -263,22 +279,23 @@ logit %>% summary() %>% coef() %>%
 cat("<BR>")
 ```
 
-The p-values for model coefficients suggests that __Balance__ and __Student__ are highly significant predictors of __Default__. Higher balances are associated with higher incidence of default, and being a student lowers the probability of default. __Income__ appears to be insignificant. 
+All included variables appear to be significant at 10% based on the estimated standard errors included in the output. We can go a step further and validate the the model's assumptions about the the shape of the estimated parameters' distributions, based on which the standard errors were calculated.
 
-### Bootstrap Model Coefficients
 
-As part of model validation, the fit of the model and the significance of its coefficients are typically tested. These parametric tests rely on assumptions about the underlying distributions (normal, F, t, Chi-Square, etc.)
+### Bootstrapping Regression Coefficients
+
+As part of model validation we often test the fit of the model and the significance of its coefficients. These parametric tests rely on assumptions about the underlying distributions (normal, F, t, Chi-Squared, etc.)
 
 We can use bootstrapping to calculate any complex test statistic and infer confidence intervals without making any assumptions about the distribution of these statistics.
 
-Next, we use bootstrap to test the stability of regression coefficients.
+In this section, we apply the same bootstrapping technique to approximate the distribution and test the stability of regression coefficients estimates.
 
 ```{r}
 
-R = 10                          # number of bootstrap samples
-n = nrow(data)                  # sample size
-k = length(coef(logit))      # number of coefficients
-    
+R = 10                      # number of bootstrap samples
+n = nrow(data)              # sample size
+k = length(coef(logit))     # number of coefficients
+
 # set up a empty Rxn matrix B
 B = matrix(nrow = R, ncol = k,
            dimnames = list(paste("Sample",1:R), 
@@ -286,26 +303,26 @@ B = matrix(nrow = R, ncol = k,
 # loop R times
 set.seed(111)
 for(i in 1:R){
-    # sample default data with replacement
+    # sample credit data with replacement
     boot.data = data[sample(x = 1:n, size = n, replace = TRUE), ]
-    # fit the model
+    # fit the model on the boostrapped sample
     boot.logit = glm(logit$formula, 
-              data=boot.data, family = binomial(link = "logit"))
-    # record the coefficients
+                     data=boot.data, family = binomial(link = "logit"))
+    # store the coefficients
     B[i,] = coef(boot.logit)
 }
 
 ```
 
-As a result, we have a __R x k__ matrix of bootstrapped regression coefficients.
+As a result, we have a __R x k__ matrix of bootstrapped regression coefficients, where each row is a set of coefficients estimated from each one of the bootstrapped samples.
 
 ```{r echo=FALSE}
 
 matrix(coef(logit), nrow = 1,
        dimnames = list("Full Sample", 
                        gsub("\\."," ", names(coef(logit)))
-                       )
-       ) %>% 
+       )
+) %>% 
     rbind(B) %>% 
     format(scientific=F, digits=1) %>% 
     pandoc.table(emphasize.strong.rows=1, 
@@ -314,9 +331,11 @@ matrix(coef(logit), nrow = 1,
 ```
 
 
-### Using *boot* function in R
+### Using the *boot* function in __R__
 
-R's *boot* package provides a convenient function to perform bootstrapping for a variety of measures. Since generating a high number of random samples can be time-consuming for large datasets, the *boot* function allows to split the bootstrapping job across a cluster of computers or across multiple cores of the local CPU. 
+R's *boot* package provides a convenient function to perform bootstrapping for a variety of measures. Its usage requires a user-defined function that takes in the original data sample and outputs the calculated statistic of interest.
+
+__Parallel processing:__ Generating a high number of random samples and fitting the model is computationally intensive and time-consuming for complex models and large datasets. The *boot* function provides the option to split the bootstrapping job across a cluster of computers or multiple cores of the local CPU. This allows the user to handle multiple bootstrap samples in parallel, which cuts down on processing time and allows to keep the number of repetitions __R__ sufficiently large.
 
 ```{r cache=TRUE}
 library(boot)
@@ -324,78 +343,79 @@ library(parallel)
 
 # function to return bootstrapped coefficients
 myLogitCoef <- function(data, indices, formula) {
-  d <- data[indices,]
-  fit <- glm(formula, data=d, family = binomial(link = "logit"))
-  return(coef(fit))
+    d <- data[indices,]
+    fit <- glm(formula, data=d, family = binomial(link = "logit"))
+    return(coef(fit))
 }
 
-# set up cluster
+# set up cluster of 4 CPU cores
 cl<-makeCluster(4)
 clusterExport(cl, 'myLogitCoef')
 
 set.seed(373)
 coef.boot <- boot(data=data, statistic=myLogitCoef, R=1000, 
-                formula= logit$formula,
-                parallel = 'snow', ncpus=4, cl=cl)
+                  formula= logit$formula,
+                  # process in parallel across 4 CPU cores
+                  parallel = 'snow', ncpus=4, cl=cl)
 stopCluster(cl)
 
 ```
 
 ### Univariate Distribution of Bootstrapped Coefficients
 
-The plots below illustrate the distribution of bootstrapped model coefficients and 95% empirical confidence intervals (thick black line at the bottom of the chart). For comparison, the graphs also show the normal distributions (orange bell curves) and 95% confidence intervals (thick orange lines) that are implied by the estimated coefficients and their standard errors (assuming normality). 
+The plots below illustrate the distribution of bootstrapped model coefficients and 95% *empirical confidence intervals* (thick black line at the bottom of the chart). For comparison, the graphs also show the normal distributions (orange bell curves) and 95% confidence intervals (thick orange line) that are implied by the estimated coefficients and their standard errors (assuming normality). 
 
 ```{r echo=FALSE, cache=TRUE,message=FALSE, fig.width=6, fig.height=3}
 
 coef.comp <- 
-  data.frame(
-    var = row.names(coef(summary(logit))),
-    coef = coef(summary(logit))[,1],
-    se = coef(summary(logit))[,2])
+    data.frame(
+        var = row.names(coef(summary(logit))),
+        coef = coef(summary(logit))[,1],
+        se = coef(summary(logit))[,2])
 
 ci <- confint(logit)
 ci.boot <- confint(coef.boot, type='perc')
 
 
 for(i in 2:nrow(coef.comp)){
-  ci.df <- data.frame(x = range(ci[i,]),
-                      x.bt = range(ci.boot[i,])) %>% 
-    mutate(y.max = max(density(coef.boot$t[,i])$y),
-           y = y.max/100, 
-           y.bt = -y.max/100)
-  
-  p <- ggplot(data.frame(coeff = coef.boot$t[,i]), aes(x=coeff)) +
-    geom_histogram(aes(y=..density..), 
-                   binwidth = diff(range(coef.boot$t[,i]))/30,
-                   fill='powderblue', color='grey') +
-    stat_function(fun = dnorm, color='darkorange1', size=.9,
-                  args = list(mean = coef.comp$coef[i], 
-                              sd = coef.comp$se[i])) + 
-    geom_line(aes(x, y), ci.df, size=2, color='darkorange1') +
-    geom_line(aes(x.bt, y.bt), ci.df, size=2) +
-    ggtitle(coef.comp$var[i])
-  print(p)
+    ci.df <- data.frame(x = range(ci[i,]),
+                        x.bt = range(ci.boot[i,])) %>% 
+        mutate(y.max = max(density(coef.boot$t[,i])$y),
+               y = y.max/100, 
+               y.bt = -y.max/100)
+    
+    p <- ggplot(data.frame(coeff = coef.boot$t[,i]), aes(x=coeff)) +
+        geom_histogram(aes(y=..density..), 
+                       binwidth = diff(range(coef.boot$t[,i]))/30,
+                       fill='powderblue', color='grey') +
+        stat_function(fun = dnorm, color='darkorange1', size=.9,
+                      args = list(mean = coef.comp$coef[i], 
+                                  sd = coef.comp$se[i])) + 
+        geom_line(aes(x, y), ci.df, size=2, color='darkorange1') +
+        geom_line(aes(x.bt, y.bt), ci.df, size=2) +
+        ggtitle(coef.comp$var[i])
+    print(p)
 }
- 
+
 
 ```
 
-We can also examine the correlation between model coefficients by plotting their multivariate distributions. 
+We can also visualize the correlation between two model coefficients by plotting their bi-variate distributions. 
 
 - Each dot represents a set of model coefficient estimates from each bootstrap iteration.
-- The orange dashed lines mark 50%, 95%, and 99% confidence intervals.
+- The orange dashed lines mark the *joint* 50%, 95%, and 99% confidence intervals.
 
 ```{r echo=FALSE, fig.width=6, fig.height=4}
 
 B <- data.frame(coef.boot$t)
 names(B) <- names(coef(logit))
 ggplot(B, aes(x=Duration, y=Amount)) +
-  geom_point(size=.7, color='navyblue')+
+    geom_point(size=.7, color='navyblue')+
     stat_ellipse(type = "norm", linetype = 1, level = 0.001, color='darkorange1', size=2) +
     stat_ellipse(type = "norm", linetype = 2, level = 0.50, color='darkorange1', size=.8) +
-  stat_ellipse(type = "norm", linetype = 2, level = 0.95, color='darkorange1', size=.8) +
-  stat_ellipse(type = "norm", linetype = 2, level = 0.99, color='darkorange1', size=.8) +
-  ggtitle('Bivariate Distribution of Bootstrapped Regression Coefficients')
+    stat_ellipse(type = "norm", linetype = 2, level = 0.95, color='darkorange1', size=.8) +
+    stat_ellipse(type = "norm", linetype = 2, level = 0.99, color='darkorange1', size=.8) +
+    ggtitle('Bivariate Distribution of Bootstrapped Regression Coefficients')
 
 
 ```
@@ -404,33 +424,33 @@ ggplot(B, aes(x=Duration, y=Amount)) +
 
 Model assumptions are important for the quality of predictions from a regression model. Better predictions will result from a model that satisfies its underlying assumptions. However, assumptions can never be fully met in empirical data.
 
-The plots above suggest that in the case of our data, the model coefficients distribution *approximates* normal. The bootstrapped confidence intervals can provide a sanity check for relying on the distributional assumptions inherent to parametric tests. 
+The plots above suggest that in the case of our data, the model coefficients distributions *approximate* normal. The bootstrapped confidence intervals can provide a sanity check for relying on the distributional assumptions inherent to parametric tests. 
 
-The same methodology can be used to bootstrap the distribution of any other complex regression model tests statistics and diagnostics (i.e. R<sup>2</sup>, MSE, AIC, BIC, etc.)
+The same methodology can be used to bootstrap the distribution of any other complex regression model tests statistics or diagnostics (i.e. R<sup>2</sup>, MSE, AIC, BIC, etc.)
 
 
 ## Validation of Model Prediction Accuracy
 
-Bootstrap in the context of three types of validation:
+For predictive models, the Bootstrap can be also examined the context of three types of model performance validation:
 
 1. __Apparent:__ 
     * Performance on same data used to train model (aka "in-sample" fit)
     * Easy to perform (often part of standard regression output)
     * Optimistic estimates of performance
     * Over-fitting - Model fine-tuned to training data. Testing on new data may show disappointing results.
-    
+
 2. __Internal:__ 
-    * Performance on same population underlying the sample
+    * Performance on same population underlying the sample, but with a twist
     * Honest estimate of performance on observations similar to the training sample
     * Indicates upper limit to expected performance in other settings
     * Three common techniques:
         + Split Sample: Training / Testing
         + Cross-validation (repeated training/testing splits)
         + __Bootstrap__ (demonstrated below)
-    
+
 3. __External:__ 
     * Performance on related but slightly different population (aka "out-of-sample")
-    * Sample from a nearby geography or from a following time period
+    * Sample from a nearby geography or from the next time period
 
 In the following section, we demonstrate how to use bootstrap to perform internal validation of model prediction accuracy, as measured by Area under the ROC curve.
 
@@ -455,7 +475,7 @@ pred = prediction(prob, data$credit)
 # AUC
 auc = performance(pred,"auc")@y.values[[1]][1]
 
-# ROC curve
+# plot the ROC curve
 perf <- performance(pred,"tpr","fpr")
 plot(perf, col="navyblue", cex.main=1,
      main= paste("Logistic Regression ROC Curve: AUC =", round(auc,3)))
@@ -465,13 +485,13 @@ abline(a=0, b = 1, col='darkorange1')
 
 The logit model's apparent, in-sample __AUC=`r round(auc,3)`__, which is unrealistically high, because the predictions where made for the same dataset on which the model was estimated. As mentioned before, to get a more realistic measure of the model's predictive accuracy, we need to apply internal (cross-validation, bootstrap) and/or external (new data, if available) validation techniques.
 
-In the following section, we demonstrate the use of the bootstrap to adjust the apparent accuracy rate to get an idea of its hypothetical perform mace in predicting the outcomes for additional data sampled from a similar population, without actually collecting more data.
+In the following section, we demonstrate the use of the bootstrap to adjust the apparent accuracy rate to get an idea of its hypothetical performance in predicting the outcomes for additional data sampled from a similar population, without actually collecting more data.
 
 
 
 ### Bootstrap Estimates of Prediction Accuracy
 
-As a basic illustration, we generate **R=10** bootstrap samples, estimate the model on each, and then apply each fitted model to the *original sample* to give *R* estimates AUC. The overall estimate of prediction accuracy is the average of these *R* estimates (see first column in the table below). Further, we recalculate prediction accuracy when the fitted model is applied to the *bootstrap sample itself* (see the second column below).
+As a basic illustration, we generate **R=10** bootstrap samples from our consumer credit profiles dataset, estimate the model on each, and then apply each fitted model to the *original sample* to give *R* estimates AUC. The overall estimate of prediction accuracy is the average of these *R* estimates (see first column in the table below). Further, we recalculate prediction accuracy when the fitted model is applied to the *bootstrap sample itself* (see the second column below).
 
 ```{r}
 
@@ -542,8 +562,8 @@ R = 200
 
 # empty Rx2 matrix for bootstrap results 
 B2 = matrix(nrow = R, ncol = 2,
-           dimnames = list(paste('Sample',1:R),
-                           c("auc_orig","auc_boot")))
+            dimnames = list(paste('Sample',1:R),
+                            c("auc_orig","auc_boot")))
 
 set.seed(602)
 for(i in 1:R){
