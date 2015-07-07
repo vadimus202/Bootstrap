@@ -53,7 +53,7 @@ Model validation is an important step in the modeling process and helps in asses
 
 ## When to use Bootstrap?
 
-The bootstrap procedure is useful when:
+The bootstrap is a simulation-based procedure for estimating and validating distributions. Generally, it is useful when:
 
 1. The theoretical distribution of a statistic is complicated or unknown.
 2. The sample size is insufficient for straightforward statistical inference.
@@ -179,6 +179,21 @@ ggplot(data.frame(median=boot_med), aes(factor(median)))+
 Given the quantiles above, we can infer with __90% confidence__ that the median of the population __X__ is between __`r quantile(boot_med,.05)`__ and __`r quantile(boot_med,.95)`__ (5% and 95% quantiles). In other words, if we drew 100 samples from the same population, 90 samples would have the median within that range, assuming our original sample was representative of the population.
 
 
+## Key Points
+
+* Estimator of interest
+    - can be an algorithm of almost any complexity
+    - bootstrapped estimate must be smooth function of data to be useful
+* The original sample must be a fair representation of the underlying population
+    - often a heroic assumption
+* Simulation replaces theoretical calculation
+    - removes need for math skills
+    - does not remove need for thought, domain knowledge, and creativity
+* Mitigate risk
+    - validate code *very* carefully - garbage in, garbage out
+    - insure the original sample is representative and observations are independent and identically distributed
+    - increase number of random samples (large enough or as much as computationally feasible)
+
 
 
 # Bootstrap Applications in Model Validation
@@ -186,8 +201,9 @@ The basic technique illustrated above can be extended to a variety of use cases,
 
 1. Goodness of fit (F-stat, R<sup>2</sup>, AIC)
 2. Statistical significance of the estimated parameters (t-test and p-values)
-3. Residuals diagnostics (normality, heteroscdastisity)
+3. Residuals diagnostics (normality, heteroscedastisity)
 4. Prediction Accuracy (Mean Squared Errors, Accuracy, Sensitivity/Specificity, Kolmogorov-Smirnov stat, etc.)
+5. Estimates of model bias & variance (similar to cross-validation)
 
 We can use bootstrapping to examine the distribution of these characteristics and their sensitivity to the natural variation in the sample without the need for collecting additional data.
 
@@ -241,7 +257,7 @@ logit = glm(credit ~
 
 ```{r echo=FALSE}
 logit %>% summary() %>% coef() %>% 
-    kable(caption = "Logistic Regression: Probability of Good Credit",
+    kable(caption = "Logistic Regression: Probability of 'Good' Credit Profile",
           format='html', digits=4, table.attr='width=75%')
 
 cat("<BR>")
@@ -386,16 +402,42 @@ ggplot(B, aes(x=Duration, y=Amount)) +
 
 ### Conclusion
 
-The plots above suggest that in the case of our data, the model coefficients distribution *approximates* normal. However, the bootstrapped confidence intervals have the advantage of not relying on any distributional assumptions. Moreover, they allow us to validate the appropriateness of using normality assumption.
+Model assumptions are important for the quality of predictions from a regression model. Better predictions will result from a model that satisfies its underlying assumptions. However, assumptions can never be fully met in empirical data.
 
-The same methodology can be used to bootstrap the distribution of other complex regression model tests statistics and diagnostics (i.e. R<sup>2</sup>, AIC, BIC, etc.)
+The plots above suggest that in the case of our data, the model coefficients distribution *approximates* normal. The bootstrapped confidence intervals can provide a sanity check for relying on the distributional assumptions inherent to parametric tests. 
 
-## Model Prediction Accuracy
+The same methodology can be used to bootstrap the distribution of any other complex regression model tests statistics and diagnostics (i.e. R<sup>2</sup>, MSE, AIC, BIC, etc.)
+
+
+## Validation of Model Prediction Accuracy
+
+Bootstrap in the context of three types of validation:
+
+1. __Apparent:__ 
+    * Performance on same data used to train model (aka "in-sample" fit)
+    * Easy to perform (often part of standard regression output)
+    * Optimistic estimates of performance
+    * Over-fitting - Model fine-tuned to training data. Testing on new data may show disappointing results.
+    
+2. __Internal:__ 
+    * Performance on same population underlying the sample
+    * Honest estimate of performance on observations similar to the training sample
+    * Indicates upper limit to expected performance in other settings
+    * Three common techniques:
+        + Split Sample: Training / Testing
+        + Cross-validation (repeated training/testing splits)
+        + __Bootstrap__ (demonstrated below)
+    
+3. __External:__ 
+    * Performance on related but slightly different population (aka "out-of-sample")
+    * Sample from a nearby geography or from a following time period
+
+In the following section, we demonstrate how to use bootstrap to perform internal validation of model prediction accuracy, as measured by Area under the ROC curve.
 
 
 ### Area under the ROC curve
 
-The Receiver Operating Characteristic (ROC) curve for our default predicting logistic regression model is plotted below. The Area under the ROC curve (AUC) is one of widely-used measures of accuracy for classification models. 
+The Receiver Operating Characteristic (ROC) curve for our default predicting logistic regression model is plotted below. The Area under the ROC curve (AUC) is a widely-used measure of accuracy for classification models. Its meaning can be interpreted as follows:
 
 - When AUC=1.00, the model assigns all observation to their true class with perfect accuracy. 
 - When AUC=0.50, the ROC curve is equivalent to the 45-degree line. It indicates the model is as accurate as guessing at random.
@@ -406,13 +448,14 @@ We can derive the ROC curve and calculate AUC for the logistic regression fitted
 ```{r fig.width=4, fig.height=4}
 library(ROCR)
 
-#score test data set
-prob = predict(logit, type='response', data)
+# score the same training data set on which the model was fit
+prob = predict.glm(logit, type='response', newdata =  data)
 pred = prediction(prob, data$credit)
 
-# auc
+# AUC
 auc = performance(pred,"auc")@y.values[[1]][1]
 
+# ROC curve
 perf <- performance(pred,"tpr","fpr")
 plot(perf, col="navyblue", cex.main=1,
      main= paste("Logistic Regression ROC Curve: AUC =", round(auc,3)))
@@ -420,11 +463,15 @@ abline(a=0, b = 1, col='darkorange1')
 
 ```
 
-The logit model's __AUC=`r round(auc,3)`__, which is unrealistically high, because the predictions where made for the same dataset on which the model was estimated. As the next step, we use bootstrapping to adjust this prediction accuracy estimate. 
+The logit model's apparent, in-sample __AUC=`r round(auc,3)`__, which is unrealistically high, because the predictions where made for the same dataset on which the model was estimated. As mentioned before, to get a more realistic measure of the model's predictive accuracy, we need to apply internal (cross-validation, bootstrap) and/or external (new data, if available) validation techniques.
+
+In the following section, we demonstrate the use of the bootstrap to adjust the apparent accuracy rate to get an idea of its hypothetical perform mace in predicting the outcomes for additional data sampled from a similar population, without actually collecting more data.
+
+
 
 ### Bootstrap Estimates of Prediction Accuracy
 
-To illustrate the simplest approach, we generate **R=10** bootstrap samples, estimate the model on each, and then apply each fitted model to the *original sample* to give *R* estimates AUC. The overall estimate of prediction accuracy is the average of these *R* estimates (see first column in the table below). Further, we recalculate prediction accuracy when the fitted model is applied to the *bootstrap sample itself* (see the second column below).
+As a basic illustration, we generate **R=10** bootstrap samples, estimate the model on each, and then apply each fitted model to the *original sample* to give *R* estimates AUC. The overall estimate of prediction accuracy is the average of these *R* estimates (see first column in the table below). Further, we recalculate prediction accuracy when the fitted model is applied to the *bootstrap sample itself* (see the second column below).
 
 ```{r}
 
@@ -534,6 +581,18 @@ auc.adj = round(auc,3) - optim
 
 
 Of course 10 bootstrap samples are too few; repeating with `r R` samples gave a value of  for the simple bootstrap estimate, and an estimate of `r optim` for the optimism leading to the value __`r round(auc,3)` - `r optim` = `r auc.adj`__ for the improved estimate of prediction accuracy. Essentially, we have added a *bias correction* to the apparent AUC.
+
+To summarize:  
+```{r echo=FALSE}
+
+cbind(c("Apparent 'in-sample' AUC:", "Optimism", "Bootstrapped AUC:"),
+      c(round(auc,3), optim, auc.adj)) %>% 
+    kable(caption = "Logistic Regression: Internally-Validated Prediction Accuracy",
+          format='html', digits=3, table.attr='width=35%')
+cat("<BR>")
+```
+
+
 
 **For more details on this approach see:**  
 *Efron, B., & Tibshirani, R. (1993). "An Introduction to the Bootstrap". Chapman and Hall*
