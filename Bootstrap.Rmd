@@ -1,5 +1,5 @@
 ---
-title: "Bootstrapping Approach to Managing Model Uncertainty"
+title: "The Bootstrap Approach to Managing Model Uncertainty"
 author: "Vadim Bondarenko<BR>FI Consulting"
 date: "July 15, 2015"
 output: 
@@ -28,6 +28,7 @@ library(caret)
 library(car)
 library(boot)
 library(ROCR)
+library(DiagrammeR)
 library(dplyr)
 
 # options("scipen"=2)
@@ -88,7 +89,7 @@ summary(x) %>% t() %>%  pandoc.table("Summary of sample x")
 ```
 
 
-The observe __median = `r median(x)`__ (the middle __Observation 5__), but if __x__ is a representative sample from a population __X__ and __`r median(x)`__ is the estimate of median for that population, what is the __90% confidence interval__ around that estimate?
+The observed __median = `r median(x)`__ (the middle __Observation 5__), but if __x__ is a representative sample from a population __X__ and __`r median(x)`__ is the estimate of median for that population, what is the __90% confidence interval__ around that estimate?
 
 There is no analytical way to derive the distribution of the median. Plus, the sample is too small. However, we can use bootstrap to derive it empirically from the data.
 
@@ -137,7 +138,7 @@ apply(B,1,median) %>% summary() %>% t() %>%  pandoc.table()
 ```
 
 We can also visualize the distribution of the bootstrapped median:
-```{r, echo=FALSE, fig.width=4,fig.height=2.5}
+```{r, echo=FALSE, fig.width=4.5, fig.height=3}
 ggplot(data.frame(median=apply(B,1,median)),aes(factor(median)))+
     geom_histogram(binwidth=1, color='grey', fill='powderblue')+
     labs(title="Distribution of Median from 10 Bootstrap Samples",
@@ -168,7 +169,7 @@ for(i in 1:R){
 Drawing a sufficiently large amounts of bootstrap samples and taking the row medians of bootstrap matrix __B__ results in a nice bell-shaped distribution of our median estimate.
 
 __Empirical Quantiles of Bootstrpped Median__
-```{r, echo=FALSE, fig.width=4,fig.height=2.5}
+```{r, echo=FALSE, fig.width=4.5 ,fig.height=3}
 # calculate row medians of B
 boot_med = apply(B,1,median)
 
@@ -487,6 +488,43 @@ The logit model's apparent, in-sample __AUC=`r round(auc,3)`__, which is unreali
 
 In the following section, we demonstrate the use of the bootstrap to adjust the apparent accuracy rate to get an idea of its hypothetical performance in predicting the outcomes for additional data sampled from a similar population, without actually collecting more data.
 
+```{r auc_diagram, echo=FALSE}
+
+grViz(width=900, diagram = "
+digraph auc{
+    
+    graph[nodesep = .5]
+    node[fontname = Arial, style=filled,
+        shape = rectangle, fixedsize = true, width = 3]
+
+    # full sample nodes
+    node [fontsize = 18,
+            fillcolor=lightsteelblue]
+    FS [label='Full Sample']
+    pred_full[label='Full Sample Predictions', width = 4]
+    auc_full[label='AUC\nFull', shape=circle, width=1]
+    
+    # bootstrap nodes
+    node [fillcolor=sandybrown]
+    BS [label='Bootstrap Sample']
+    mod[label='Model Fit', shape=diamond, width=2, height=1.25]    
+    pred_bs[label='Bootstrap Sample Predictions', width = 4]
+    auc_bs[label='AUC\nBootstrap', shape=circle, width=1.5]
+
+    # edges
+    FS->BS; BS->mod
+    FS->pred_full; mod->pred_full
+    BS->pred_bs; mod->pred_bs
+    pred_bs->auc_bs; pred_full->auc_full; 
+    auc_bs->opt; auc_full->opt
+
+    # optimism node
+    opt[shape=box, width = 6, fillcolor=white, fontsize = 22, fontface=bold,
+        label='Optimism = AUC Bootstrap - AUC Full']
+
+}")
+
+```
 
 
 ### Bootstrap Estimates of Prediction Accuracy
